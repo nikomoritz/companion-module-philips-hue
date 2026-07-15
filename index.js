@@ -223,6 +223,39 @@ class ModuleInstance extends InstanceBase {
 		});
 	}
 
+	async getScenesRaw() {
+		const http = require('http');
+
+		return new Promise((resolve, reject) => {
+			const url = `http://${this.config.ip}/api/${this.config.username}/scenes`;
+			const req = http.get(url, (res) => {
+				let data = '';
+				res.on('data', (chunk) => (data += chunk));
+				res.on('end', () => {
+					try {
+						const json = JSON.parse(data);
+						if (Array.isArray(json) && json[0] && json[0].error) {
+							reject(new Error(json[0].error.description || 'Bridge returned an error'));
+							return;
+						}
+						// For scenes, we just want an array of scenes with their IDs attached
+						const scenes = Object.entries(json).map(([id, scene]) => ({
+							id,
+							...scene
+						}));
+						resolve(scenes);
+					} catch (err) {
+						reject(err);
+					}
+				});
+			});
+			req.on('error', reject);
+			req.setTimeout(5000, () => {
+				req.destroy(new Error('Request to bridge timed out'));
+			});
+		});
+	}
+
 	async updateParams() {
 		if (!this.api) {
 			return
@@ -294,7 +327,7 @@ class ModuleInstance extends InstanceBase {
 			this.updateStatus(InstanceStatus.ConnectionFailure, 'Lost connection to bridge');
 		});
 
-		this.api.scenes.getAll().then((scenes) => {
+		this.getScenesRaw().then((scenes) => {
 			var paramsChanged = false;
 			if (this.scenes.length != scenes.length) {
 				paramsChanged = true;
